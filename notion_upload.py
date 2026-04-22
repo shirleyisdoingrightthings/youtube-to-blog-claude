@@ -79,6 +79,13 @@ def parse_markdown(content: str) -> tuple[str, list]:
     lines = content.split("\n")
     i = 0
 
+    # ── 跳过 YAML Frontmatter ──
+    if len(lines) > 0 and lines[0].strip() == "---":
+        i = 1
+        while i < len(lines) and lines[i].strip() != "---":
+            i += 1
+        i += 1  # 略过闭合的 ---
+
     while i < len(lines):
         raw = lines[i]
         line = raw.strip()

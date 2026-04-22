@@ -17,7 +17,9 @@ _token = os.environ.get("YOUTUBE_TRANSCRIPT_API_KEY", "")
 API_AUTH = f"Basic {_token}" if _token else ""
 
 
-def extract_video_id(url: str) -> str | None:
+import typing
+
+def extract_video_id(url: str) -> typing.Optional[str]:
     url = url.strip()
     patterns = [
         r'youtu\.be/([a-zA-Z0-9_-]{11})',
@@ -59,15 +61,28 @@ def fetch_transcript(video_id: str) -> str:
     resp.raise_for_status()
     data = resp.json()
 
-    # API returns a list of transcript objects
     if isinstance(data, list) and data:
         item = data[0]
         if isinstance(item, dict):
-            # Try common field names
+            # 优先尝试从 tracks 中提取带时间戳的字幕
+            if "tracks" in item and isinstance(item["tracks"], list) and item["tracks"]:
+                track = item["tracks"][0]
+                if "transcript" in track and isinstance(track["transcript"], list):
+                    lines = []
+                    for seg in track["transcript"]:
+                        start = float(seg.get("start", 0))
+                        mins = int(start // 60)
+                        secs = int(start % 60)
+                        text = seg.get("text", "").strip()
+                        if text:
+                            lines.append(f"[{mins:02d}:{secs:02d}] {text}")
+                    return "\n".join(lines)
+            
+            # 回退：如果没有时间戳，则返回纯文本
             for key in ("text", "transcript", "content"):
                 if item.get(key):
                     return item[key]
-            # Some APIs return segments as list of {text, start, duration}
+            
             if "segments" in item:
                 return " ".join(
                     seg.get("text", "") for seg in item["segments"]
