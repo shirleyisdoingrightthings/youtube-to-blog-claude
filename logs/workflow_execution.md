@@ -5,6 +5,16 @@
 
 ---
 
+**[2026-04-25]** ✅ 成功
+- 视频：The Supply and Demand of AI Tokens | Dylan Patel Interview
+- URL：https://youtu.be/LF3aUIM57uw
+- 字幕抓取：成功（98 个内容块）
+- 文章生成：成功，保存至 `output/The Supply and Demand of AI Tokens - Dylan Patel Interview/`
+- Notion 上传：成功，页面链接 https://notion.so/34d18b4d66e981038823c3e95e1786be
+- Obsidian 同步：成功，已写入 `Second Brain/YouTube Transcripts/`
+
+---
+
 ## [2026-04-23]
 - **执行动作**：执行抓取与生成测试。
 - **处理对象**：Dylan Patel: NVIDIA's New Moat & Why China is "Semiconductor Pilled”

@@ -99,11 +99,22 @@ def main():
     if not API_AUTH or API_AUTH == "Basic ":
         print(json.dumps({"error": "YOUTUBE_TRANSCRIPT_API_KEY not set in .env"}))
         sys.exit(1)
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "Usage: fetch_transcript.py <youtube_url>"}))
+
+    args = sys.argv[1:]
+    output_path = None
+    if "--output" in args:
+        idx = args.index("--output")
+        if idx + 1 >= len(args):
+            print(json.dumps({"error": "--output requires a file path"}))
+            sys.exit(1)
+        output_path = args[idx + 1]
+        args = args[:idx] + args[idx + 2:]
+
+    if not args:
+        print(json.dumps({"error": "Usage: fetch_transcript.py <youtube_url> [--output <path>]"}))
         sys.exit(1)
 
-    url = sys.argv[1]
+    url = args[0]
     video_id = extract_video_id(url)
 
     if not video_id:
@@ -118,13 +129,19 @@ def main():
         print(json.dumps({"error": f"Transcript fetch failed: {e}"}))
         sys.exit(1)
 
-    print(json.dumps({
+    result = json.dumps({
         "video_id": video_id,
         "url": f"https://www.youtube.com/watch?v={video_id}",
         "original_url": url,
         "title": title,
         "transcript": transcript,
-    }, ensure_ascii=False))
+    }, ensure_ascii=False)
+
+    print(result)
+
+    if output_path:
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(result)
 
 
 if __name__ == "__main__":

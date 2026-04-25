@@ -30,10 +30,10 @@
 
 ### Step 1：抓取字幕
 
-运行以下命令获取视频字幕（JSON 输出）：
+运行以下命令获取视频字幕（JSON 输出），同时将字幕文件保存到当前目录的临时文件：
 
 ```bash
-python3 fetch_transcript.py <用户提供的URL>
+python3 fetch_transcript.py <用户提供的URL> --output transcript_temp.json
 ```
 
 ### Step 2：生成 Blog 文章
@@ -61,7 +61,7 @@ python3 fetch_transcript.py <用户提供的URL>
    - **绝对不要使用下划线（_）拼接单词**，保持自然阅读格式。
    - 创建子目录存放文件，格式为：`output/<视频完整标题>/`（无需在文件夹名上加标签）。
 4. 将生成的 Markdown 文章保存至该目录下，文件名为 `<视频完整标题>.md`。
-5. 将刚才抓取的临时字幕文件重命名为 `transcript.json` 并移动到该同级子目录下。
+5. 将 Step 1 已保存的临时字幕文件 `transcript_temp.json` 移动到该子目录下，并重命名为 `transcript.json`。
 
 ### Step 4：上传 Notion 与同步 Second Brain
 

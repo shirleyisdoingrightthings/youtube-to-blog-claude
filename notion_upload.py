@@ -158,6 +158,30 @@ def parse_markdown(content: str) -> tuple[str, list]:
 # Notion API 操作
 # ───────────────────────────────────────────
 
+def find_existing_page(youtube_url: str) -> str | None:
+    """查询数据库中是否已存在相同 URL 的页面，返回 page_id 或 None"""
+    resp = requests.post(
+        f"https://api.notion.com/v1/databases/{DATABASE_ID}/query",
+        headers=HEADERS,
+        json={"filter": {"property": "URL", "url": {"equals": youtube_url}}},
+        timeout=30,
+    )
+    if not resp.ok:
+        return None
+    results = resp.json().get("results", [])
+    return results[0]["id"] if results else None
+
+
+def archive_page(page_id: str) -> None:
+    """将已有页面归档（软删除），为重新上传腾位"""
+    requests.patch(
+        f"https://api.notion.com/v1/pages/{page_id}",
+        headers=HEADERS,
+        json={"archived": True},
+        timeout=30,
+    )
+
+
 def create_page(title: str, youtube_url: str) -> str:
     """在数据库里新建一页，返回 page_id"""
     today = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+08:00")
@@ -223,6 +247,11 @@ def main():
 
     print(f"📄 标题：{title}")
     print(f"📦 共 {len(blocks)} 个块")
+
+    existing_id = find_existing_page(youtube_url)
+    if existing_id:
+        print(f"♻️  检测到已有页面，归档旧版本...")
+        archive_page(existing_id)
 
     print("🔗 正在创建 Notion 页面...")
     page_id = create_page(title, youtube_url)
