@@ -1,82 +1,54 @@
-# YouTube → Blog | Claude Code Cookbook
+# YouTube → Blog | Claude Code 自动化工作流
 
-这是一个基于 Claude Code 的自动化工作流，能够将任意 YouTube 视频转换为结构化、可直接发布的博客文章，并自动上传到 Notion。
+将任意 YouTube 视频链接转换为结构化中文深度解读文章，并自动归档至 Notion 与 Obsidian。适用于 AI/科技讲座、播客访谈、行业大会演讲等内容类型。
 
-**功能亮点：**
-1. 通过 [youtube-transcript.io](https://www.youtube-transcript.io) 抓取视频字幕
-2. Claude 自动生成中文深度解读文章（标准 6 段式结构）
-3. 将文章保存为本地 Markdown 文件
-4. 自动上传到 Notion 数据库，并包含视频封面图、元数据及正确的标题层级
-
-**适用场景：** AI/科技讲座、播客、深度访谈、行业大会主题演讲。
+> **环境配置与使用指南** → [PLAYBOOK.md](PLAYBOOK.md)
 
 ---
 
-## 工作原理
+## 工作流
 
-这是一个 [Claude Code](https://claude.ai/code) Agentic 工作流。当你在 Claude Code 会话中打开此文件夹并发送一个 YouTube 链接时，Claude 会自动运行整套流水线——无需任何人工干预。
+在 Claude Code 中打开此目录，发送 YouTube 链接，工作流自动执行以下步骤：
 
-`CLAUDE.md` 文件作为系统级 Prompt，指示 Claude 按顺序执行每个步骤，包括通过工具调用来运行 Python 脚本和写入文件。符合 Harness Engineering 的 Progressive Disclosure（渐进式信息披露）原则，具体写作规范通过 `skills/` 按需加载。
-
-> **🚀 想要开始使用？** 
-> 完整的环境配置、终端指令及自定义修改指南，请参阅：**[PLAYBOOK.md](PLAYBOOK.md)**
-
----
-
-
-
-## 输出格式
-
-生成的每篇文章都遵循严格的 6 段式结构（简体中文）：
-
-1. **Metadata（元数据）** — 标题、主持人、嘉宾、链接、日期
-2. **TL;DR** — 150–200 字的核心摘要
-3. **核心观点** — 3–5 个最有价值的洞见
-4. **按主题重构全文内容** — 打破原有时间线，按主题重组并附带时间戳
-5. **总结与展望** — 结论、开放性问题、前瞻性预测
-6. **参考资源** — 视频中提及的所有资源（模型、论文、工具等），分类整理
-
-文章与原始字幕将被归档至 `output/<视频完整标题>/` 目录下（抛弃下划线拼接，保持自然连贯阅读），并自动执行两项同步：
-1. 上传至 Notion：
-   - 视频封面图（自动从 YouTube 抓取）
-   - Type: 视频 / Category: 播客访谈
-   - 直接链接到视频的 URL 字段
-2. 同步至 Obsidian (Second Brain)：将带有多重 Obsidian 标签的 Markdown 文件自动复制到 `~/Desktop/Second Brain/YouTube Transcripts/` 中。
+1. **抓取字幕** — 调用 [youtube-transcript.io](https://www.youtube-transcript.io) API 获取带时间戳的完整字幕，同时保存为本地 `transcript.json`
+2. **生成文章** — 按照 `skills/article_generation.md` 中的规范，生成 6 段式中文深度解读（Metadata → TL;DR → 核心观点 → 按主题重构 → 总结与展望 → 参考资源）
+3. **归档文件** — 按视频完整标题建立子目录，保存 Markdown 文章与字幕文件
+4. **同步 Notion** — 上传文章内容（含封面图、元数据），已有页面自动归档旧版本后重建（幂等）
+5. **同步 Obsidian** — 将带 YAML frontmatter 标签的 Markdown 复制到 Second Brain 目录
 
 ---
 
-## 项目结构
+## 文件结构
 
 ```text
 .
-├── CLAUDE.md               # Claude Code 系统 Prompt（Agent 的大脑）
-├── fetch_transcript.py     # Step 1: 抓取 YouTube 字幕
-├── notion_upload.py        # Step 4: 将 Markdown 上传至 Notion
-├── requirements.txt
-├── tags.json               # 标签规范字典（控制标签收敛）
-├── .env.example
-├── .gitignore
-├── logs/                   # 工作流可观测日志
-│   ├── system_changelog.md     # 系统宏观迭代日志
-│   └── workflow_execution.md   # 微观执行报错记录
+├── CLAUDE.md                   # 系统 Prompt，控制 Agent 执行逻辑
+├── fetch_transcript.py         # 字幕抓取脚本（支持 --output 参数）
+├── notion_upload.py            # Notion 上传脚本（幂等 upsert）
+├── tags.json                   # 标签字典（约束分类标签与双链术语的边界）
 ├── skills/
-│   └── article_generation.md # 按需加载的文章生成规范
-└── output/                 # 生成的文章归档目录
-    └── 某某极其完整的视频全称/
-        ├── transcript.json
-        └── 某某极其完整的视频全称.md
+│   └── article_generation.md  # 文章生成规范（按需加载）
+├── logs/
+│   ├── workflow_execution.md   # 每次执行记录
+│   └── system_changelog.md    # 系统架构变更日志
+├── output/
+│   └── <视频完整标题>/
+│       ├── <视频完整标题>.md
+│       └── transcript.json
+├── requirements.txt
+├── .env.example
+└── .gitignore
 ```
 
 ---
 
-## Harness Engineering 架构思想
+## 系统架构
 
-本项目深度践行了 Harness Engineering（工作流控制工程）的思想：
-- **Progressive Disclosure (渐进式披露)**：将具体的文章生成规则下放至 `skills/` 目录，通过主控 Prompt (`CLAUDE.md`) 按需调用，大幅优化 Token 占用。
-- **Context Persistence (持久化配置)**：通过 `tags.json` 强约束 AI 打标签的行为。确立了**“宏观分类用 YAML Tags 强收敛，微观术语用 Obsidian 双链 `[[ ]]` 自由发散”**的治理准则，避免知识库在无人工介入下产生发散污染。
-- **Observability (可观测性)**：建立 `logs/` 记录每一次执行。当遇到反爬或接口故障时，强制引入 **Human-in-the-loop（人在回路）** 机制，由人类确认异常处理，防止自动降级带来的数据污染。
-- **Memory 资产化**：将非结构化视频数据提取为结构化资产，并双向同步至 Notion (归档) 与 Obsidian Second Brain (互联)。
-
----
-
-
+| 层级 | 文件 | 职责 |
+|---|---|---|
+| 控制层 | `CLAUDE.md` | 定义执行步骤与异常处理规则，是 Agent 的唯一入口 |
+| 技能层 | `skills/` | 存放按需加载的专项规范，与控制层解耦 |
+| 数据层 | `tags.json` | 强约束标签收敛，防止知识库发散 |
+| 执行层 | `*.py` | 各步骤对应的独立脚本，可单独调用 |
+| 观测层 | `logs/` | 执行日志与系统变更记录，本地保留不进 Git |
+| 输出层 | `output/` | 按视频标题归档的 Markdown 文章与字幕原文 |
