@@ -15,6 +15,17 @@
 
 ---
 
+**[2026-04-26]** ✅ 成功
+- 视频：Andrej Karpathy: From Vibe Coding to Agentic Engineering
+- URL：https://youtu.be/96jN2OCOfLs
+- 字幕抓取：成功（884 行，覆盖 00:02–29:41，--output 一次调用完成）
+- Notion 幂等性：未检测到已有页面，正常新建
+- 文章生成：成功，保存至 `output/Andrej Karpathy - From Vibe Coding to Agentic Engineering/`
+- Notion 上传：成功，页面链接 https://notion.so/35218b4d66e9813b9d7ee8c08e3a585f
+- Obsidian 同步：成功
+
+---
+
 **[2026-04-25]** ✅ 成功
 - 视频：The Supply and Demand of AI Tokens | Dylan Patel Interview
 - URL：https://youtu.be/LF3aUIM57uw
