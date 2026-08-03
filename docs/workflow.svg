@@ -64,8 +64,8 @@ text{font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",
 <g class="c-gray"><rect x="40" y="164" width="300" height="42" rx="8"/><text class="th" x="56" y="182">Step 1 抓字幕</text><text class="ts" x="56" y="198">闸门 · coverage ≥ 0.9</text></g>
 <rect class="box" x="396" y="164" width="244" height="42" rx="8"/><text class="ts" x="410" y="189">fetch_transcript.py</text>
 
-<g class="c-purple"><rect x="40" y="218" width="300" height="42" rx="8"/><text class="th" x="56" y="236">Step 2 生成内容</text><text class="ts" x="56" y="252">路由 · 精读/逐字稿/演讲实录</text></g>
-<rect class="box" x="396" y="218" width="244" height="42" rx="8"/><text class="ts" x="410" y="235">illustrated_deepdive.md</text><text class="ts" x="410" y="251">dialogue_transcript.md</text>
+<g class="c-purple"><rect x="40" y="218" width="300" height="42" rx="8"/><text class="th" x="56" y="236">Step 2 生成内容</text><text class="ts" x="56" y="252">路由 · 精读/逐字稿/实录/观察稿</text></g>
+<rect class="box" x="396" y="218" width="244" height="42" rx="8"/><text class="ts" x="410" y="231">illustrated_deepdive.md</text><text class="ts" x="410" y="244">dialogue_transcript.md</text><text class="ts" x="410" y="257">observation_commentary.md</text>
 
 <g class="c-teal"><rect x="40" y="272" width="300" height="42" rx="8"/><text class="th" x="56" y="290">Step 2.5 对照字幕核校</text><text class="ts" x="56" y="306">事实·数字·专名铁律</text></g>
 <rect class="box" x="396" y="272" width="244" height="42" rx="8"/><text class="ts" x="410" y="297">glossary.md（术语统一）</text>

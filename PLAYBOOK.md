@@ -65,13 +65,16 @@ https://youtu.be/am_oeAoUhew
 开始转录
 ```
 
-### 三种产物形态（由你的措辞路由）
+### 四种产物形态（由你的措辞路由）
 
 | 形态 | 触发方式 | 适用 |
 |---|---|---|
 | **图文精读稿**（默认） | 不带关键词，或"图文精读" | 按主题重构、配发布全套要素，直接发公众号 |
 | **对话体逐字稿** | 带"逐字稿/对话体/访谈稿/transcript" | 多人访谈，还原现场、标注说话人 |
 | **演讲实录（现场回闪）** | 单人演讲/keynote；多嘉宾同题可合成"现场回闪" | 保留演讲者第一人称原话 + 配 PPT 截图 |
+| **观察 / 观点稿** | 一个引爆事件 + 多个一手信源，要一条行业判断 | 不走单一视频转写，把多信源编织成自己的中心判断线 |
+
+> 归档文件名必须落在这四种后缀上（`- 图文精读` / `- 逐字稿` / `- 演讲实录` / `- 观察稿`）——`notion_upload.py` 靠后缀识别类型来查重，后缀不认得就会跳过查重、重传留下重复页。
 
 ```
 # 默认 —— 图文精读稿
@@ -94,8 +97,8 @@ https://youtu.be/am_oeAoUhew
 | 步骤 | 做什么 | 闸门 / 路由 | 对应模块 |
 |---|---|---|---|
 | 前置检查 | 校验三个 API 密钥 | — | `.env` |
-| **阶段 -1 选题预判** | 抓字幕略读 + 四维打分，给结论后**停住等"开始转录"** | 闸门：值不值得投精力做 | `fetch_transcript.py` + `skills/topic_assessment.md` |
-| **Step 1 抓字幕** | 复用阶段 -1 字幕、校验覆盖率（残缺自动回退重抓） | 闸门：`coverage ≥ 0.9` 才放行 | `fetch_transcript.py` |
+| **阶段 -1 选题预判** | 抓字幕略读 + 四维打分，给结论后**停住等"开始转录"** | 闸门：值不值得投精力做；用 `--prefer-free` 不烧付费配额 | `fetch_transcript.py` + `skills/topic_assessment.md` |
+| **Step 1 抓字幕** | 复用阶段 -1 字幕、校验覆盖率（残缺自动换源重抓） | 闸门：`coverage ≥ 0.9` **且** `coverage_verified` 为 true 才放行 | `fetch_transcript.py` |
 | **Step 2 生成内容** | 按形态写稿 | 路由：图文精读 / 逐字稿 / 演讲实录 | `skills/illustrated_deepdive.md`、`skills/dialogue_transcript.md` |
 | **Step 2.5 对照字幕核校** | 逐项核对事实/数字/专名/因果（工作流灵魂） | 专名铁律：先查证、拿不准标 ⚠️、绝不臆造 | `glossary.md` |
 | **Step 2.6 Agent Council 自检** | 全新评审 Agent 打分 → 全新核实 Agent 复核 → 主模型清硬伤 | 闸门：必改硬伤清零 | `skills/reader_facing_review.md` |
@@ -112,7 +115,7 @@ https://youtu.be/am_oeAoUhew
 | 层 | 职责 | 模块 |
 |---|---|---|
 | 抓取层 | 拿字幕、保覆盖率 | `fetch_transcript.py` |
-| 生成与质控层 | 写稿 + 核校 + 互审 | `skills/*.md`（5 个规范）+ `glossary.md` + `tags.json` |
+| 生成与质控层 | 写稿 + 核校 + 互审 | `skills/*.md`（6 个规范）+ `glossary.md` + `tags.json` |
 | 归档发布层 | 三件套 + 上云 | `output/<标题>/`、`notion_upload.py`、`notion_read.py` |
 | 自进化层 | 记录 + 棘轮 + 进化 | `logs/*.md`、`system_changelog.md` |
 
@@ -131,11 +134,13 @@ https://youtu.be/am_oeAoUhew
 | `skills/topic_assessment.md` | 阶段 -1 选题预判 | 四维权重、打分维度、输出格式 |
 | `skills/illustrated_deepdive.md` | 图文精读规范 | 9 段式结构、封面 Prompt、减负装置、去 AI 味 |
 | `skills/dialogue_transcript.md` | 逐字稿 + 演讲实录规范 | 对话体结构、说话人规则、演讲实录/现场回闪形态 |
+| `skills/observation_commentary.md` | 观察 / 观点稿规范 | 中心判断线、多信源编织、冷峻严肃的语体 |
 | `skills/reader_facing_review.md` | 复核 + Agent Council 协议 | 互审机制、复核清单 |
 | `skills/handoff_doc.md` | 交接文档模板 | 交接文档区块、更新铁律 |
 | `glossary.md` | 术语对照表 | 统一译法/写法（跨篇、跨系列上下集） |
 | `tags.json` | 标签词库 | 可选的宏观标签 |
-| `notion_upload.py` | Notion 映射 | `create_page()` 字段对齐你自己的数据库 |
+| `fetch_transcript.py` | 抓取与完整度闸门 | `COVERAGE_THRESHOLD` 阈值、源优先级（`--prefer-free`）|
+| `notion_upload.py` | Notion 映射 + 查重 | `create_page()` 字段对齐你的数据库；`TYPE_NAMES` 登记新产物类型 |
 
 常见改动：
 
@@ -143,7 +148,7 @@ https://youtu.be/am_oeAoUhew
 - **更改文章结构：** 编辑 `illustrated_deepdive.md` 的 9 段式，或 `dialogue_transcript.md` 的格式要求。
 - **统一术语译法：** 在 `glossary.md` 增改，核校（Step 2.5）时据此统一全篇及系列上下集。
 - **跳过 Notion 上传：** 从 `CLAUDE.md` 删除 Step 4，并让 `.env` 的 `NOTION_*` 留空。
-- **新增一种产物形态：** 在对应 skill 里加形态变体（参考"演讲实录"的加法），并在 `CLAUDE.md` Step 2 路由处登记。
+- **新增一种产物形态：** 三处都要登记，缺一处就会出问题——① 在对应 skill 里加形态变体（参考"演讲实录"的加法）；② 在 `CLAUDE.md` Step 2 路由 + Step 3 文件名规则处登记；③ 在 `notion_upload.py` 的 `TYPE_NAMES` 里加类型名，否则 Notion 查重认不出它，重传会留下重复页。
 
 ---
 
@@ -154,5 +159,16 @@ https://youtu.be/am_oeAoUhew
 | 服务 | 免费额度 / 计费 |
 |---|---|
 | youtube-transcript.io | 20 个视频 / 月（免费版） |
+| youtube-transcript-api | 免费直连 YouTube，无额度（可能被 YouTube 限流） |
 | Notion API | 无限制（配合 Integration 使用） |
 | Claude Code | 基于你的 Anthropic 订阅计划产生 Token 费用 |
+
+### 省配额：`--prefer-free`
+
+`fetch_transcript.py` 默认付费源优先（稳定性更好），加 `--prefer-free` 则免费源优先、覆盖率达标就收工，**完全不碰付费配额**；免费源残缺或抓不到时才回落付费源兜底。选题预判每条链接都要抓一次字幕，批量预判几条就能吃掉月配额的一大截，所以**阶段 -1 一律用它**：
+
+```bash
+python3 fetch_transcript.py <youtube_url> --prefer-free --output transcript_temp.json
+```
+
+两种模式都会做覆盖率校验：不足 90% 自动换另一源重抓，两源皆残缺则 exit 1；连视频时长都拿不到时输出 `coverage_verified: false` 与 `warning`，需人工确认，不当作通过。

@@ -4,7 +4,9 @@ __pycache__/
 *.pyc
 *.pyo
 .DS_Store
-logs/
+
+# logs/ 是已跟踪文件（system_changelog.md 是这套流程的演进史，值得留在版本里），
+# 所以这里不能写 logs/ ——写了也不生效，只会让人以为它们没进 Git。
 
 # 本地工具状态 / 临时工作文件（勿提交）
 .claude/
@@ -12,3 +14,6 @@ err.log
 transcript_temp.json
 talk_transcript.json
 transcript_*.json
+# 待用字幕：进 transcripts_pending/ 后会按视频原标题重命名，
+# 不再匹配上面的 transcript_*.json，必须单独忽略整个目录
+transcripts_pending/

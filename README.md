@@ -17,11 +17,12 @@
 
 在 Claude Code 中打开此目录，发送 YouTube 链接，工作流自动执行以下步骤：
 
-1. **抓取字幕** — 调用 [youtube-transcript.io](https://www.youtube-transcript.io) API 获取带时间戳的完整字幕，同时保存为本地 `transcript.json`
-2. **意图路由与生成** — 根据用户输入（默认生成**图文精读稿**；含"逐字稿/对话体"等关键词时生成**对话体逐字稿**），调用 `skills/illustrated_deepdive.md` 或 `skills/dialogue_transcript.md` 中的规范，生成对应的 Markdown 输出
-3. **对照字幕核校** — 生成后、归档前，逐板块对照 `transcript.json` 核对事实/数字/专名/因果，对照 `glossary.md` 统一术语，区分必改硬伤与可选润色（工作流核心步骤，两种产物通用）
-4. **归档文件** — 按系统自动生成的中文标题建立子目录，保存对应的 Markdown 文件（如 `<标题> - 图文精读.md` 或 `<标题> - 逐字稿.md`）与原始字幕数据
-5. **同步 Notion** — 上传文章内容（含封面图、元数据），已有页面自动归档旧版本后重建（幂等）
+1. **选题预判** — 先抓字幕略读、四维加权打分，给出"值不值得做"的编辑结论后停住等指令（预判用 `--prefer-free`，不消耗付费源配额）
+2. **抓取字幕** — 调用 [youtube-transcript.io](https://www.youtube-transcript.io) API 获取带时间戳的完整字幕，并做覆盖率校验（不足 90% 自动换源重抓，两源皆残缺则硬失败），保存为本地 `transcript.json`
+3. **意图路由与生成** — 根据用户输入（默认生成**图文精读稿**；含"逐字稿/对话体"等关键词时生成**对话体逐字稿**；单人演讲走**演讲实录**；多信源行业判断走**观察稿**），调用 `skills/` 下对应规范生成 Markdown 输出
+4. **对照字幕核校 + Agent Council 自检** — 生成后、归档前，逐板块对照 `transcript.json` 核对事实/数字/专名/因果，对照 `glossary.md` 统一术语；再由全新评审 + 核实 Agent 互审清掉硬伤
+5. **归档三件套** — 按系统生成的中文标题建立子目录，保存成品 Markdown、原始字幕与交接文档
+6. **同步 Notion** — 上传文章内容（含封面图、元数据），同类型页面自动归档旧版本后重建（幂等）
 
 ---
 
@@ -29,21 +30,32 @@
 
 ```text
 .
-├── CLAUDE.md                   # 系统 Prompt，控制 Agent 执行逻辑
-├── glossary.md                 # 项目术语对照表（核校时统一译法与写法）
-├── fetch_transcript.py         # 字幕抓取脚本（支持 --output 参数）
-├── notion_upload.py            # Notion 上传脚本（幂等 upsert）
-├── tags.json                   # 标签字典（约束分类标签与双链术语的边界）
+├── CLAUDE.md                       # 系统 Prompt，控制 Agent 执行逻辑
+├── AGENTS.md                       # → CLAUDE.md 的符号链接（两个入口永不漂移）
+├── PLAYBOOK.md                     # 操作手册：配置、使用、全流程与自定义
+├── glossary.md                     # 项目术语对照表（核校时统一译法与写法）
+├── fetch_transcript.py             # 字幕抓取（--output / --prefer-free，内置覆盖率校验）
+├── notion_upload.py                # Notion 上传脚本（按类型后缀查重，幂等 upsert）
+├── notion_read.py                  # 读回线上稿（精修时对照用）
+├── tags.json                       # 标签字典（约束分类标签与双链术语的边界）
 ├── skills/
-│   ├── illustrated_deepdive.md # 图文精读稿生成规范（默认产物）
-│   └── dialogue_transcript.md  # 对话体逐字稿生成规范
+│   ├── topic_assessment.md         # 阶段 -1 选题预判规范（四维加权打分）
+│   ├── illustrated_deepdive.md     # 图文精读稿生成规范（默认产物）
+│   ├── dialogue_transcript.md      # 对话体逐字稿 / 演讲实录生成规范
+│   ├── observation_commentary.md   # 观察 / 观点稿生成规范（多信源）
+│   ├── reader_facing_review.md     # 复核清单 + Agent Council 终审协议
+│   └── handoff_doc.md              # 交接文档模板与更新铁律
+├── docs/
+│   └── workflow.svg                # 工作流设计视图
 ├── logs/
-│   ├── workflow_execution.md   # 每次执行记录
-│   └── system_changelog.md    # 系统架构变更日志
+│   ├── workflow_execution.md       # 每次执行记录
+│   └── system_changelog.md         # 系统架构变更日志
+├── transcripts_pending/            # 预判后暂缓的字幕（不进 Git，重抓要花钱）
 ├── output/
 │   └── <生成的中文标题>/
 │       ├── <生成的中文标题> - 图文精读.md
 │       ├── <生成的中文标题> - 逐字稿.md
+│       ├── 交接文档.md
 │       └── transcript.json
 ├── requirements.txt
 ├── .env.example
@@ -56,9 +68,9 @@
 
 | 层级 | 文件 | 职责 |
 |---|---|---|
-| 控制层 | `CLAUDE.md` | 定义执行步骤与异常处理规则，是 Agent 的唯一入口 |
-| 技能层 | `skills/` | 存放按需加载的专项规范（图文精读 / 逐字稿），与控制层解耦 |
+| 控制层 | `CLAUDE.md`（`AGENTS.md` 为其符号链接）| 定义执行步骤与异常处理规则，是 Agent 的唯一入口 |
+| 技能层 | `skills/` | 存放按需加载的专项规范（选题预判 / 四种文体 / 复核 / 交接），与控制层解耦 |
 | 数据层 | `tags.json`、`glossary.md` | 标签收敛防发散；术语对照表保证跨篇译法统一 |
 | 执行层 | `*.py` | 各步骤对应的独立脚本，可单独调用 |
-| 观测层 | `logs/` | 执行日志与系统变更记录，本地保留不进 Git |
+| 观测层 | `logs/` | 执行日志与系统变更记录（随仓库版本化，是这套流程的演进史）|
 | 输出层 | `output/` | 按视频标题归档的 Markdown 文章与字幕原文 |
