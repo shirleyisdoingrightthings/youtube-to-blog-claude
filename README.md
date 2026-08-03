@@ -37,7 +37,7 @@
 ├── fetch_transcript.py             # 字幕抓取（--output / --prefer-free，内置覆盖率校验）
 ├── notion_upload.py                # Notion 上传脚本（按类型后缀查重，幂等 upsert）
 ├── notion_read.py                  # 读回线上稿（精修时对照用）
-├── tags.json                       # 标签字典（约束分类标签与双链术语的边界）
+├── http_utils.py                   # 三个脚本共用的 HTTP 退避重试
 ├── skills/
 │   ├── topic_assessment.md         # 阶段 -1 选题预判规范（四维加权打分）
 │   ├── illustrated_deepdive.md     # 图文精读稿生成规范（默认产物）
@@ -45,6 +45,7 @@
 │   ├── observation_commentary.md   # 观察 / 观点稿生成规范（多信源）
 │   ├── reader_facing_review.md     # 复核清单 + Agent Council 终审协议
 │   └── handoff_doc.md              # 交接文档模板与更新铁律
+├── tests/                          # 回归测试（python3 tests/run_all.py）
 ├── docs/
 │   └── workflow.svg                # 工作流设计视图
 ├── logs/
@@ -70,7 +71,8 @@
 |---|---|---|
 | 控制层 | `CLAUDE.md`（`AGENTS.md` 为其符号链接）| 定义执行步骤与异常处理规则，是 Agent 的唯一入口 |
 | 技能层 | `skills/` | 存放按需加载的专项规范（选题预判 / 四种文体 / 复核 / 交接），与控制层解耦 |
-| 数据层 | `tags.json`、`glossary.md` | 标签收敛防发散；术语对照表保证跨篇译法统一 |
-| 执行层 | `*.py` | 各步骤对应的独立脚本，可单独调用 |
+| 数据层 | `glossary.md` | 术语对照表，保证跨篇、跨系列上下集的译法与写法统一 |
+| 执行层 | `*.py` | 各步骤对应的独立脚本，可单独调用；网络请求统一走 `http_utils` 的退避重试 |
+| 测试层 | `tests/` | 回归测试，钉住那些「不报错、只是悄悄出错」的老 bug |
 | 观测层 | `logs/` | 执行日志与系统变更记录（随仓库版本化，是这套流程的演进史）|
 | 输出层 | `output/` | 按视频标题归档的 Markdown 文章与字幕原文 |

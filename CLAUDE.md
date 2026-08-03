@@ -107,32 +107,21 @@ python3 fetch_transcript.py <用户提供的URL> --output transcript_temp.json
 
 ### Step 3：保存 Markdown 文件与目录归档
 
-1. **标签与双链规则**：
-   - 严格从 `tags.json` 的 `categories` 和 `topics` 中挑选 1-3 个词汇作为宏观标签。
-   - **绝对不要**将 `ai_terminologies` 里的术语或生造词作为标签（Tags）。
-   - 对于 `ai_terminologies` 中的术语或视频里的重要 AI 概念，在正文提及它们时，请直接使用 Obsidian 的双向链接语法（如 `[[Agent架构]]`）将其标记为知识节点。
-2. 在 Markdown 文章的最开头（Metadata 之前），以 YAML Frontmatter 的格式写入你挑选的宏观标签。格式如下：
-   ```yaml
-   ---
-   tags:
-     - 对话访谈
-     - 硬件分析
-   ---
-   ```
-3. **建立目录与命名**：
+1. **不写 YAML Frontmatter、不打双链**：成品 `.md` 开头**不加** `tags:` 块，正文**不使用** Obsidian 双链 `[[ ]]`。两者都是已移除的 Obsidian 同步工作流的残留——Notion 端不消费标签（Category 由脚本固定填写），双链在上传时还得专门剥掉方括号。历史稿里残留的 `[[ ]]` 由 `notion_upload.py` 自动剥离，无需回头改。
+2. **建立目录与命名**：
    - **不要直接使用视频的英文原标题**作为目录名和文件名。使用 Step 2 中根据 skills 规范生成的**中文标题**（格式：`嘉宾姓名｜核心主题描述`）。
    - 若中文标题含有 `/` 或 `:` 等路径非法字符，请替换为 `-` 或空格。
    - **绝对不要使用下划线（_）拼接单词**，保持自然阅读格式。
    - 创建子目录存放文件，格式为：`output/<生成的中文标题>/`（无需在文件夹名上加标签）。
-4. 根据模式保存文件：
+3. 根据模式保存文件：
    - **模式 A**：文件名为 `<生成的中文标题> - 图文精读.md`
    - **模式 B**：文件名为 `<生成的中文标题> - 逐字稿.md`
    - **演讲实录（单人演讲 / 现场回闪）**：文件名为 `<生成的中文标题> - 演讲实录.md`
    - **模式 C（观察 / 观点稿）**：文件名为 `<生成的中文标题> - 观察稿.md`
    - 各形态的输出存放于同一子目录下，互不覆盖。
    - **后缀必须用上面这四种写法之一**：`notion_upload.py` 靠文件名后缀识别产物类型来查重（`TYPE_NAMES`），后缀不在表里就整个跳过查重，重传会在 Notion 留下重复页。新增形态时同步在脚本的 `TYPE_NAMES` 里登记。
-5. 将 Step 1 已保存的临时字幕文件 `transcript_temp.json` 移动到该子目录下，并重命名为 `transcript.json`（若目录中已有 `transcript.json`，则跳过此步；**合辑 / 多来源稿**改名为 `transcript_<来源>.json`，如 `transcript_ryolu.json`）。
-6. **生成交接文档（强制 · 三件套之一）**：在该子目录下生成 `交接文档.md`，严格按 `skills/handoff_doc.md` 的固定模板与规范填写。交接文档是给"新对话 / 新 Agent 接续多轮精修"用的**状态快照**（让新 Agent 只读它即可恢复工作记忆、不必回吞整轮生成过程），每篇必出，与「成品.md」「transcript.json」并称**归档三件套**。
+4. 将 Step 1 已保存的临时字幕文件 `transcript_temp.json` 移动到该子目录下，并重命名为 `transcript.json`（若目录中已有 `transcript.json`，则跳过此步；**合辑 / 多来源稿**改名为 `transcript_<来源>.json`，如 `transcript_ryolu.json`）。
+5. **生成交接文档（强制 · 三件套之一）**：在该子目录下生成 `交接文档.md`，严格按 `skills/handoff_doc.md` 的固定模板与规范填写。交接文档是给"新对话 / 新 Agent 接续多轮精修"用的**状态快照**（让新 Agent 只读它即可恢复工作记忆、不必回吞整轮生成过程），每篇必出，与「成品.md」「transcript.json」并称**归档三件套**。
 
 **输出信号（Output Signal）：**
 - ✅ 成功：仅展示 `✅ Step 3 完成 | 已归档三件套（成品 + transcript.json + 交接文档）至：output/{标题}/`。
@@ -203,5 +192,6 @@ python3 notion_upload.py "<刚才保存的md文件路径>" "<视频原始URL>"
    - `skills/`：图文精读生成规范（`illustrated_deepdive.md`）或逐字稿生成规范（`dialogue_transcript.md`）是否发生了永久性变更？
    - `glossary.md`：项目术语对照表是否需要补充新术语或统一新的译法/写法？
    - `CLAUDE.md`：自身的指令逻辑是否有需要补齐的漏洞？
+   - `tests/`：**若本次动过任何 `.py`，必须跑 `python3 tests/run_all.py` 并报告结果**；新增行为顺手补一条测试。这些测试守的是"不报错、只是悄悄出错"那一类（查重失效 / 半截字幕放行 / 正文上传时变形），不跑就发现不了。
 3. **等待确认 (Human-in-the-loop)**：**暂停执行更新**，等待用户审核并批准该清单。
 4. **执行更新与记录日志**：用户批准后，自动修改对应的系统文档，并在 `logs/system_changelog.md` 的顶端追加一条系统升级日志（记录升级模块及具体改动）。**绝对不要**将系统架构改动混入记录业务数据的 `workflow_execution.md` 中。

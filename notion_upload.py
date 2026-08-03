@@ -12,6 +12,8 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv
 
+import http_utils
+
 load_dotenv()
 
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY", "")
@@ -138,6 +140,29 @@ def quote_block(text: str) -> dict:
             "quote": {"rich_text": rich_text(text)}}
 
 
+# skill 里规定的三种减负装置 / 增补装置，用 Notion callout 承载才有视觉层级：
+#   📍 路线条（illustrated_deepdive「本文路线」）
+#   💡 说人话保底句
+#   🔍 名词解释灰框（reader_facing_review 的编者增补，必须与嘉宾原话区分开）
+CALLOUT_ICONS = ("📍", "💡", "🔍")
+
+
+def _split_callout(line: str) -> tuple:
+    """行首是 callout emoji（允许写成 `> 📍 …` 的灰框形式）则返回 (icon, 正文)。"""
+    body = re.sub(r"^>\s*", "", line)
+    for icon in CALLOUT_ICONS:
+        if body.startswith(icon):
+            return icon, body[len(icon):].lstrip("️").lstrip()
+    return None, line
+
+
+def callout_block(text: str, icon: str) -> dict:
+    return {"object": "block", "type": "callout",
+            "callout": {"rich_text": rich_text(text),
+                        "icon": {"type": "emoji", "emoji": icon},
+                        "color": "gray_background"}}
+
+
 def parse_markdown(content: str) -> tuple[str, list]:
     """返回 (页面标题, notion_blocks列表)"""
     blocks: list[dict] = []
@@ -171,6 +196,20 @@ def parse_markdown(content: str) -> tuple[str, list]:
                 i += 1
             blocks.append(code_block("\n".join(body_lines), lang))
             i += 1          # 吃掉收尾的 ```
+            continue
+
+        # ── Callout（📍 路线条 / 💡 说人话 / 🔍 名词解释；允许 `> ` 开头的灰框写法）──
+        icon, callout_text = _split_callout(line)
+        if icon:
+            # 换行续写的部分并进同一个 callout，别被拆成孤立段落
+            while (i + 1 < len(lines)
+                   and lines[i + 1].strip()
+                   and not re.match(r"^([#>\-*•|`!]|\d+\.)", lines[i + 1].strip())
+                   and not _split_callout(lines[i + 1].strip())[0]):
+                i += 1
+                callout_text += " " + lines[i].strip()
+            blocks.append(callout_block(callout_text, icon))
+            i += 1
             continue
 
         # ── 分隔线 ──
@@ -249,7 +288,7 @@ def parse_markdown(content: str) -> tuple[str, list]:
 
 def find_pages_by_url(youtube_url: str) -> list:
     """查询数据库中所有关联该 URL 的活跃页面，返回 [(page_id, title), ...]"""
-    resp = requests.post(
+    resp = http_utils.post(
         f"https://api.notion.com/v1/databases/{DATABASE_ID}/query",
         headers=HEADERS,
         json={"filter": {"property": "URL", "url": {"equals": youtube_url}}},
@@ -269,7 +308,7 @@ def find_pages_by_url(youtube_url: str) -> list:
 
 def archive_page(page_id: str) -> None:
     """将已有页面归档（软删除），为重新上传腾位"""
-    requests.patch(
+    http_utils.patch(
         f"https://api.notion.com/v1/pages/{page_id}",
         headers=HEADERS,
         json={"archived": True},
@@ -291,7 +330,7 @@ def create_page(title: str, youtube_url: str) -> str:
             "Status":       {"status": {"name": "Not started"}},
         },
     }
-    resp = requests.post(
+    resp = http_utils.post(
         "https://api.notion.com/v1/pages",
         headers=HEADERS, json=payload, timeout=30,
     )
@@ -305,7 +344,7 @@ def append_blocks(page_id: str, blocks: list) -> None:
     """分批上传 blocks（每批最多 95 个）。失败抛异常，交给调用方收拾空页。"""
     for i in range(0, len(blocks), 95):
         chunk = blocks[i: i + 95]
-        resp = requests.patch(
+        resp = http_utils.patch(
             f"https://api.notion.com/v1/blocks/{page_id}/children",
             headers=HEADERS, json={"children": chunk}, timeout=30,
         )

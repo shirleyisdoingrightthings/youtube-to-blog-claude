@@ -19,7 +19,7 @@ Usage:
       本脚本会返回 404 object_not_found；
     - 解决：在 Notion 打开该页 → 右上角 ••• → Connections →
       添加 "claude code youtube transcript scraper and summary"，即可恢复读取/写入。
-    - 系统代理（127.0.0.1:7897）偶发 SSL 中断，脚本已内置重试。
+    - 系统代理（127.0.0.1:7897）偶发 SSL 中断，请求走 http_utils 的统一退避重试。
 
 输出：纯文本（标题 + 各 block，按层级缩进；图片/视频标 [IMAGE]/[VIDEO]）。
 """
@@ -27,10 +27,10 @@ from __future__ import annotations
 
 import os
 import sys
-import time
 
-import requests
 from dotenv import load_dotenv
+
+import http_utils
 
 load_dotenv()
 
@@ -38,16 +38,9 @@ KEY = os.environ.get("NOTION_API_KEY", "")
 HEADERS = {"Authorization": f"Bearer {KEY}", "Notion-Version": "2022-06-28"}
 
 
-def _get(url: str, retries: int = 8):
-    """GET with retries（绕过代理偶发 SSL 中断）。"""
-    last = None
-    for _ in range(retries):
-        try:
-            return requests.get(url, headers=HEADERS, timeout=30)
-        except Exception as e:  # noqa: BLE001
-            last = e
-            time.sleep(1.5)
-    raise last
+def _get(url: str):
+    """GET with retries——退避策略与 fetch/upload 统一，见 http_utils。"""
+    return http_utils.get(url, headers=HEADERS, timeout=30, label="notion-read")
 
 
 def _rich_text(arr) -> str:

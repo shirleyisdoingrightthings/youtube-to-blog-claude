@@ -24,6 +24,8 @@ import typing
 import requests
 from dotenv import load_dotenv
 
+import http_utils
+
 load_dotenv()
 
 _token = os.environ.get("YOUTUBE_TRANSCRIPT_API_KEY", "")
@@ -51,9 +53,9 @@ def extract_video_id(url: str) -> typing.Optional[str]:
 
 def get_video_title(video_id: str) -> str:
     try:
-        resp = requests.get(
+        resp = http_utils.get(
             f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json",
-            timeout=10,
+            timeout=10, label="oembed",
         )
         if resp.ok:
             return resp.json().get("title", "Unknown Title")
@@ -70,14 +72,14 @@ def get_video_duration(video_id: str) -> typing.Optional[int]:
     这里免费再取一次时长，尽量不让校验落到"无法判定"。
     """
     try:
-        resp = requests.get(
+        resp = http_utils.get(
             f"https://www.youtube.com/watch?v={video_id}",
             headers={
                 "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"),
                 "Accept-Language": "en-US,en;q=0.9",
             },
-            timeout=15,
+            timeout=15, label="watch-page",
         )
         if resp.ok:
             m = re.search(r'"lengthSeconds":"(\d+)"', resp.text)
@@ -105,11 +107,11 @@ def _last_ts(transcript: str) -> float:
 
 def fetch_via_io(video_id: str) -> typing.Tuple[str, typing.Optional[int]]:
     """主源：youtube-transcript.io。返回 (transcript_text, duration_seconds)。"""
-    resp = requests.post(
+    resp = http_utils.post(
         "https://www.youtube-transcript.io/api/transcripts",
         headers={"Authorization": API_AUTH, "Content-Type": "application/json"},
         json={"ids": [video_id]},
-        timeout=60,
+        timeout=60, label="youtube-transcript.io",
     )
     resp.raise_for_status()
     data = resp.json()
