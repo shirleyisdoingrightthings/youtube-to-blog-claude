@@ -110,8 +110,24 @@ def page_title(page_id: str) -> str:
 
 
 def _normalize_id(s: str) -> str:
-    """从 URL 或带横杠 ID 里抽出 32 位 page id。"""
+    """从 URL 或带横杠 ID 里抽出 32 位 page id。
+
+    注意：不能对整条 URL 做 replace("-","") ——slug 末尾若是 hex 字符
+    （如 "Anthropic" 的 c）会被粘到真实 id 前面，导致取错 32 位。
+    """
     import re
+    s = s.split("?")[0].split("#")[0]
+    # ① 优先匹配带横杠的标准 UUID
+    m = re.search(
+        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", s)
+    if m:
+        return m.group(0).replace("-", "")
+    # ② 取最后一段路径里的尾部 32 位 hex（id 总在末尾，取末 32 位可避开 slug 粘连）
+    tail = s.rstrip("/").split("/")[-1]
+    hexonly = re.sub(r"[^0-9a-fA-F]", "", tail)
+    if len(hexonly) >= 32:
+        return hexonly[-32:]
     m = re.search(r"([0-9a-fA-F]{32})", s.replace("-", ""))
     return m.group(1) if m else s
 

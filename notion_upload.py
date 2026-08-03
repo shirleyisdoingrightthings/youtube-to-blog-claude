@@ -29,19 +29,67 @@ HEADERS = {
 # Markdown → Notion Blocks 转换
 # ───────────────────────────────────────────
 
+# Notion 单个 rich_text 的 content 上限 2000 字符（超了直接 400）
+TEXT_LIMIT = 2000
+
+# 行内语法：反引号最先，避免代码里的 * 被当成加粗；双链先于普通链接
+INLINE_RE = re.compile(
+    r"(?P<code>`[^`\n]+`)"
+    r"|(?P<bold>\*\*.+?\*\*)"
+    r"|(?P<wiki>\[\[[^\[\]\n]+\]\])"
+    r"|(?P<link>\[[^\[\]\n]+\]\([^()\s]+\))"
+)
+
+
+def _text_items(content: str, *, bold: bool = False, code: bool = False,
+                link: str | None = None) -> list:
+    """生成一个或多个 rich_text 项，超过 2000 字符按上限切分"""
+    items = []
+    chunks = [content[i: i + TEXT_LIMIT]
+              for i in range(0, len(content), TEXT_LIMIT)] or [content]
+    for chunk in chunks:
+        item: dict = {"type": "text", "text": {"content": chunk}}
+        if link:
+            item["text"]["link"] = {"url": link}
+        annotations = {}
+        if bold:
+            annotations["bold"] = True
+        if code:
+            annotations["code"] = True
+        if annotations:
+            item["annotations"] = annotations
+        items.append(item)
+    return items
+
+
 def rich_text(text: str) -> list:
-    """把 **bold** 转成 Notion rich_text 格式"""
-    parts = []
-    for seg in re.split(r"(\*\*[^*]+\*\*)", text):
-        if seg.startswith("**") and seg.endswith("**"):
-            parts.append({
-                "type": "text",
-                "text": {"content": seg[2:-2]},
-                "annotations": {"bold": True},
-            })
-        elif seg:
-            parts.append({"type": "text", "text": {"content": seg}})
-    return parts or [{"type": "text", "text": {"content": text}}]
+    """把行内 Markdown 转成 Notion rich_text。
+
+    支持：**加粗**、`行内代码`、[文字](链接)、[[双链]]（Obsidian 专用语法，
+    上传 Notion 时剥掉方括号只留词条本身，否则页面上会出现 [[…]] 噪音）。
+    """
+    parts: list = []
+    pos = 0
+    for m in INLINE_RE.finditer(text):
+        if m.start() > pos:
+            parts += _text_items(text[pos: m.start()])
+        kind = m.lastgroup
+        raw = m.group()
+        if kind == "code":
+            parts += _text_items(raw[1:-1], code=True)
+        elif kind == "bold":
+            parts += _text_items(raw[2:-2], bold=True)
+        elif kind == "wiki":
+            # [[词条]] / [[词条|显示文字]] → 只保留人读的那部分
+            inner = raw[2:-2]
+            parts += _text_items(inner.split("|")[-1].strip())
+        elif kind == "link":
+            label, url = re.match(r"\[([^\]]+)\]\(([^)]+)\)", raw).groups()
+            parts += _text_items(label, link=url)
+        pos = m.end()
+    if pos < len(text):
+        parts += _text_items(text[pos:])
+    return parts or _text_items(text)
 
 
 def heading_block(level: int, text: str) -> dict:
@@ -52,6 +100,23 @@ def heading_block(level: int, text: str) -> dict:
 def image_block(url: str) -> dict:
     return {"object": "block", "type": "image",
             "image": {"type": "external", "external": {"url": url}}}
+
+
+# Notion code block 只认固定的语言枚举，不在表里的一律降级为 plain text
+CODE_LANGUAGES = {
+    "python", "javascript", "typescript", "bash", "shell", "json", "yaml",
+    "markdown", "html", "css", "sql", "java", "go", "rust", "c", "c++", "diff",
+}
+CODE_LANG_ALIASES = {"js": "javascript", "ts": "typescript", "sh": "bash",
+                     "zsh": "bash", "yml": "yaml", "md": "markdown", "text": "plain text"}
+
+
+def code_block(body: str, lang: str = "") -> dict:
+    language = CODE_LANG_ALIASES.get(lang.lower(), lang.lower())
+    if language not in CODE_LANGUAGES:
+        language = "plain text"
+    return {"object": "block", "type": "code",
+            "code": {"rich_text": _text_items(body), "language": language}}
 
 
 def paragraph_block(text: str) -> dict:
@@ -96,9 +161,30 @@ def parse_markdown(content: str) -> tuple[str, list]:
             i += 1
             continue
 
+        # ── 围栏代码块（``` 起 ``` 止；封面 Recraft Prompt 就住在这里）──
+        if line.startswith("```"):
+            lang = line[3:].strip()
+            body_lines = []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("```"):
+                body_lines.append(lines[i])
+                i += 1
+            blocks.append(code_block("\n".join(body_lines), lang))
+            i += 1          # 吃掉收尾的 ```
+            continue
+
         # ── 分隔线 ──
         if re.match(r"^-{3,}$", line):
             blocks.append(divider_block())
+
+        # ── 图片：![alt](url)，仅 http(s) 外链能进 Notion image block ──
+        elif re.fullmatch(r"!\[[^\]]*\]\([^)]+\)", line):
+            alt, src = re.match(r"!\[([^\]]*)\]\(([^)]+)\)", line).groups()
+            if src.startswith(("http://", "https://")):
+                blocks.append(image_block(src))
+            else:
+                # 本地路径 / 占位路径塞给 Notion 会 400，降级成一行提示文字
+                blocks.append(paragraph_block(f"🖼️ [待补图片：{alt or src}]"))
 
         # ── H1 ──
         elif re.match(r"^#\s+", line):
@@ -134,15 +220,15 @@ def parse_markdown(content: str) -> tuple[str, list]:
         # ── 普通段落（合并连续行）──
         else:
             para_lines = [line]
+            # 表格行 / 代码围栏 / 图片行不并进段落，否则会被空格粘成一坨
             while (i + 1 < len(lines)
                    and lines[i + 1].strip()
-                   and not re.match(r"^[#>\-*•]|\d+\.", lines[i + 1].strip())):
+                   and not re.match(r"^([#>\-*•|`!]|\d+\.)", lines[i + 1].strip())):
                 i += 1
                 para_lines.append(lines[i].strip())
-            text = " ".join(para_lines)
-            # Notion 单块最多 2000 字符
-            for chunk in [text[j: j + 2000] for j in range(0, len(text), 2000)]:
-                blocks.append(paragraph_block(chunk))
+            # 2000 字符上限由 rich_text 内部按片切分，这里不再按字数切块——
+            # 按字数硬切会把 **加粗** 从中间劈开
+            blocks.append(paragraph_block(" ".join(para_lines)))
 
         # ── 从 Metadata 里提取标题（备用）──
         if title == "YouTube 视频解读":
@@ -181,20 +267,6 @@ def find_pages_by_url(youtube_url: str) -> list:
     return pages
 
 
-def rename_page(page_id: str, new_title: str) -> None:
-    """修改已有页面的标题"""
-    requests.patch(
-        f"https://api.notion.com/v1/pages/{page_id}",
-        headers=HEADERS,
-        json={
-            "properties": {
-                "Name": {"title": [{"type": "text", "text": {"content": new_title}}]}
-            }
-        },
-        timeout=30,
-    )
-
-
 def archive_page(page_id: str) -> None:
     """将已有页面归档（软删除），为重新上传腾位"""
     requests.patch(
@@ -230,7 +302,7 @@ def create_page(title: str, youtube_url: str) -> str:
 
 
 def append_blocks(page_id: str, blocks: list) -> None:
-    """分批上传 blocks（每批最多 95 个）"""
+    """分批上传 blocks（每批最多 95 个）。失败抛异常，交给调用方收拾空页。"""
     for i in range(0, len(blocks), 95):
         chunk = blocks[i: i + 95]
         resp = requests.patch(
@@ -238,78 +310,73 @@ def append_blocks(page_id: str, blocks: list) -> None:
             headers=HEADERS, json={"children": chunk}, timeout=30,
         )
         if not resp.ok:
-            print(f"[ERROR] 上传 blocks 失败: {resp.status_code} {resp.text}")
-            sys.exit(1)
+            raise RuntimeError(f"上传 blocks 失败: {resp.status_code} {resp.text}")
 
 
 # ───────────────────────────────────────────
 # 防冲突逻辑
 # ───────────────────────────────────────────
 
-# 当前两种产物后缀在前（图文精读 / 逐字稿）；"深度文章"为已退役类型，仅保留识别能力以兼容历史文件
-TYPE_SUFFIXES = ("—图文精读", "—逐字稿", "—深度文章", " - 图文精读", " - 逐字稿", " - 深度文章")
+# 当前四种产物类型在前；"深度文章"为已退役类型，仅保留识别能力以兼容历史文件。
+# 新增一种产物形态时，只需在这里登记类型名。
+TYPE_NAMES = ("图文精读", "逐字稿", "演讲实录", "观察稿", "深度文章")
 
-def detect_type_suffix(filename_title: str) -> tuple:
+# 文件名里出现过的几种分隔写法都要认；按长度降序匹配，避免 "-" 抢先吃掉 " - "
+SEPARATORS = (" — ", " - ", "—", "-")
+
+
+def canonical_suffix(type_name: str) -> str:
+    """统一的后缀写法：全角破折号 + 类型名"""
+    return f"—{type_name}"
+
+
+def detect_type_suffix(title: str) -> tuple:
     """
-    从文件名标题中提取 (base_title, current_type_suffix)。
+    从标题中提取 (base_title, canonical_type_suffix)。
+    识别不出类型时返回 (原标题, None)。
     例：'Dylan Patel｜... - 逐字稿' → ('Dylan Patel｜...', '—逐字稿')
     """
-    for suffix in TYPE_SUFFIXES:
-        if filename_title.endswith(suffix):
-            base = filename_title[: -len(suffix)].rstrip()
-            # 统一用全角破折号格式
-            normalized = suffix.replace(" - ", "—")
-            return base, normalized
-    return filename_title, None
-
-
-def infer_other_suffix(current_suffix: str) -> str:
-    """推断另一种类型的后缀（当前体系：图文精读 ↔ 逐字稿）"""
-    return "—逐字稿" if current_suffix == "—图文精读" else "—图文精读"
+    for type_name in TYPE_NAMES:
+        for sep in SEPARATORS:
+            suffix = f"{sep}{type_name}"
+            if title.endswith(suffix):
+                return title[: -len(suffix)].rstrip(), canonical_suffix(type_name)
+    return title, None
 
 
 def resolve_dedup(youtube_url: str, base_title: str, current_suffix: str) -> str:
     """
     防冲突核心逻辑，返回最终使用的页面标题。
 
+    页面标题一律自带类型后缀（含首次上传），这样线上每一页都自证类型，
+    不需要靠"推断另一种类型"去猜——猜错会给旧页贴上错误的后缀。
+
     规则：
-    1. 无已有页面 → 标题不加后缀（只有一种类型时保持简洁）
-    2. 已有页面标题 == base_title（无后缀）→ 说明之前只上传过一种类型：
-       a. 给已有页面重命名，追加它对应的类型后缀
-       b. 新页面使用 base_title + 当前类型后缀
-    3. 已有页面标题 == base_title + 当前后缀（同类型重复上传）→ 归档旧的，创建新的（更新语义）
-    4. 已有页面标题 == base_title + 其他后缀（另一种类型）→ 不动它，新页面用当前后缀
+    1. 线上已有同类型页（base + 当前后缀）→ 归档旧页，新建（更新语义）
+    2. 线上已有其他类型页 → 不动它
+    3. 线上有无类型后缀的历史页 → 无法判定其类型，保留不动并告警，交人工处理
     """
+    final_title = f"{base_title}{current_suffix}"
     existing_pages = find_pages_by_url(youtube_url)
 
     if not existing_pages:
-        # 规则 1：首次上传，不加后缀
-        print("📌 首次上传，标题不加后缀")
-        return base_title
-
-    final_title = f"{base_title}{current_suffix}"
+        print(f"📌 首次上传，标题：{final_title}")
+        return final_title
 
     for pid, ptitle in existing_pages:
-        # 标准化 Notion 中的旧格式后缀（" - " → "—"）
-        ptitle_normalized = (
-            ptitle.replace(" - 图文精读", "—图文精读")
-                  .replace(" - 深度文章", "—深度文章")
-                  .replace(" - 逐字稿", "—逐字稿")
-        )
+        p_base, p_suffix = detect_type_suffix(ptitle)
 
-        if ptitle_normalized == base_title:
-            # 规则 2：已有页面无后缀 → 给它追加后缀
-            other_suffix = infer_other_suffix(current_suffix)
-            new_name = f"{base_title}{other_suffix}"
-            print(f"✏️  给已有页面追加后缀：「{ptitle}」→「{new_name}」")
-            rename_page(pid, new_name)
-
-        elif ptitle_normalized == final_title:
-            # 规则 3：同类型重复上传 → 归档旧版
-            print(f"♻️  同类型页面已存在，归档旧版本...")
+        if p_suffix == current_suffix and p_base == base_title:
+            # 规则 1：同类型重复上传 → 归档旧版
+            print("♻️  同类型页面已存在，归档旧版本...")
             archive_page(pid)
 
-        # 规则 4：其他类型的页面 → 不动
+        elif p_suffix is None and p_base == base_title:
+            # 规则 3：历史遗留的无后缀页，类型不可知 → 绝不猜
+            print(f"⚠️  线上存在一页无类型后缀的历史页「{ptitle}」，无法判定它属于哪种产物，已保留不动。")
+            print("    若它其实就是本次这一类，请在 Notion 手动归档后重传，避免留下重复页。")
+
+        # 规则 2：其他类型的页面 → 不动
 
     return final_title
 
@@ -339,8 +406,10 @@ def main():
     filename_title = basename[:-3] if basename.endswith(".md") else basename
     base_title, current_suffix = detect_type_suffix(filename_title)
 
-    # 如果无法从文件名识别类型，直接用文件名作标题
+    # 如果无法从文件名识别类型，直接用文件名作标题（此时查重无从判断，只能跳过）
     if current_suffix is None:
+        print(f"⚠️  文件名未带已知类型后缀（{'/'.join(TYPE_NAMES[:4])}），本次跳过查重，"
+              f"重传会留下重复页。建议把文件名改成「<标题> - <类型>.md」。")
         title = filename_title
     else:
         title = resolve_dedup(youtube_url, base_title, current_suffix)
@@ -358,7 +427,14 @@ def main():
     page_id = create_page(title, youtube_url)
 
     print("⬆️  正在上传内容...")
-    append_blocks(page_id, blocks)
+    try:
+        append_blocks(page_id, blocks)
+    except RuntimeError as e:
+        # 内容没传上去就留个空壳页，会被下次查重误判成"旧版本"，先清掉
+        print(f"[ERROR] {e}")
+        print("🧹 正在归档本次创建的空页面，避免留下空壳...")
+        archive_page(page_id)
+        sys.exit(1)
 
     clean_id = page_id.replace("-", "")
     print(f"✅ 完成！页面链接：https://notion.so/{clean_id}")
