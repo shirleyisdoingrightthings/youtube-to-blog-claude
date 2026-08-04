@@ -16,6 +16,7 @@ MODULES = [
     "test_fetch_coverage",
     "test_notion_dedup",
     "test_markdown_blocks",
+    "test_edit_check",
 ]
 
 

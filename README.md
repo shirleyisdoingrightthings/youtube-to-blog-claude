@@ -37,6 +37,7 @@
 ├── fetch_transcript.py             # 字幕抓取（--output / --prefer-free，内置覆盖率校验）
 ├── notion_upload.py                # Notion 上传脚本（按类型后缀查重，幂等 upsert）
 ├── notion_read.py                  # 读回线上稿（精修时对照用）
+├── check_transcript_edit.py        # 精编稿体检：时间戳逆序 + 时间轴缺口扫描
 ├── http_utils.py                   # 三个脚本共用的 HTTP 退避重试
 ├── skills/
 │   ├── topic_assessment.md         # 阶段 -1 选题预判规范（四维加权打分）

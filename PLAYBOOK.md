@@ -42,6 +42,10 @@ cp .env.example .env
 mkdir output
 ```
 
+### 5.（可选）少点几次"允许"
+
+`.claude/settings.local.json` 里预置了权限白名单：本项目的四个脚本、只读 git 命令（status / diff / log / show…）、`ls`/`grep`/`wc` 这类查看命令，以及 Step 2.5 专名核对要用的 WebSearch。**写操作一律不在白名单里**——`git commit`/`push`/`reset`、`rm` 等仍会逐次询问。该文件随 `.claude/` 一起被 gitignore，换机器要重新配。
+
 ---
 
 ## 二、使用方法 (Usage)
@@ -100,7 +104,7 @@ https://youtu.be/am_oeAoUhew
 | **阶段 -1 选题预判** | 抓字幕略读 + 四维打分，给结论后**停住等"开始转录"** | 闸门：值不值得投精力做；用 `--prefer-free` 不烧付费配额 | `fetch_transcript.py` + `skills/topic_assessment.md` |
 | **Step 1 抓字幕** | 复用阶段 -1 字幕、校验覆盖率（残缺自动换源重抓） | 闸门：`coverage ≥ 0.9` **且** `coverage_verified` 为 true 才放行 | `fetch_transcript.py` |
 | **Step 2 生成内容** | 按形态写稿 | 路由：图文精读 / 逐字稿 / 演讲实录 / 观察稿 | `skills/illustrated_deepdive.md`、`skills/dialogue_transcript.md`、`skills/observation_commentary.md` |
-| **Step 2.5 对照字幕核校** | 逐项核对事实/数字/专名/因果（工作流灵魂） | 专名铁律：先查证、拿不准标 ⚠️、绝不臆造 | `glossary.md` |
+| **Step 2.5 对照字幕核校** | 逐项核对事实/数字/专名/因果（工作流灵魂） | 专名铁律：先查证、拿不准标 ⚠️、绝不臆造；带时间戳的成品先跑机检 | `glossary.md`、`check_transcript_edit.py` |
 | **Step 2.6 Agent Council 自检** | 全新评审 Agent 打分 → 全新核实 Agent 复核 → 主模型清硬伤 | 闸门：必改硬伤清零 | `skills/reader_facing_review.md` |
 | **Step 3 归档三件套** | 建中文标题目录，落地成品 + 字幕 + 交接文档 | — | `skills/handoff_doc.md`、`output/<标题>/` |
 | **Step 4 上传 Notion** | 上传（重传查重、每类型只留一页、幂等） | — | `notion_upload.py` |
@@ -109,6 +113,20 @@ https://youtu.be/am_oeAoUhew
 | **Step 6 系统自检与进化** | 盘点本轮改动、更新核心文档 | 触发词驱动（Meta-Harness） | `CLAUDE.md`、`skills/`、`logs/system_changelog.md` |
 
 > 设计视图（流程步骤按角色着色、右侧映射到工程模块的流水线图）见 → [docs/workflow.svg](docs/workflow.svg)。
+
+### 精编稿体检：`check_transcript_edit.py`
+
+逐字稿 / 演讲实录做完精编压缩后，Step 2.5 之前跑一次（自动在同目录找 `transcript.json`）：
+
+```bash
+python3 check_transcript_edit.py "output/<标题>/<标题> - 逐字稿.md"
+```
+
+它算两件事：**时间戳单调递增**（出现逆序即 exit 1，属硬伤）和**所有 ≥2 分钟的删除区间**（含开场与片尾），每段附上原字幕摘录，含让步 / 限定语的标 🔺 高风险。脚本只负责算和摆证据，**判断该不该删仍是编辑的活**——理由只能落在四类（广告口播 / 铺垫性长问 / 重复论证 / 纯附和回合），不属于这四类的一律补回。加 `--min-gap <秒>` 调阈值、`--json` 取结构化结果。
+
+> 为什么要有它：精编最危险的失败不是删多了几句，而是整段关键问答被静默删掉、成品读起来依然连贯、自检看不出来。这类必须靠算。
+
+---
 
 > ⚠️ **`output/` 是三件套的唯一本地副本，别当成临时目录清理。** Notion 上只有成品，`transcript.json` 与 `交接文档.md` 只存在于本地，且 `output/` 不进 Git。字幕删了要重抓——花付费配额，老视频还可能已经没有字幕。
 
@@ -142,6 +160,7 @@ https://youtu.be/am_oeAoUhew
 | `glossary.md` | 术语对照表 | 统一译法/写法（跨篇、跨系列上下集） |
 | `fetch_transcript.py` | 抓取与完整度闸门 | `COVERAGE_THRESHOLD` 阈值、源优先级（`--prefer-free`）|
 | `notion_upload.py` | Notion 映射 + 查重 | `create_page()` 字段对齐你的数据库；`TYPE_NAMES` 登记新产物类型；`CALLOUT_ICONS` 增减 callout 触发 emoji |
+| `check_transcript_edit.py` | 精编稿体检 | `DEFAULT_MIN_GAP` 缺口阈值、`HEDGE_MARKERS` 让步语词表 |
 | `http_utils.py` | 网络重试策略 | 重试次数、退避基数、哪些状态码值得重试 |
 | `tests/` | 回归测试 | 改完脚本跑 `python3 tests/run_all.py`，新增行为顺手补一条 |
 
